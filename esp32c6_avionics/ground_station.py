@@ -149,7 +149,8 @@ HTML = r'''
       socket.emit('command', `gains:${kp},${ki},${kd}`);
     }
     function downloadCSV() {
-      const blob = new Blob([csvRows.join('\\n')], {type: 'text/csv'});
+      const newline = String.fromCharCode(10);
+      const blob = new Blob([csvRows.join(newline)], {type: 'text/csv'});
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = 'avionics_log.csv';
