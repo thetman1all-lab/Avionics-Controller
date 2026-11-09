@@ -15,7 +15,7 @@ cd esp32c6_avionics
 pip install -r requirements.txt
 python ground_station.py
 ```
-Then open **http://localhost:5000** in a browser.
+Then open **http://localhost:5001** in a browser.
 
 ### Usage
 1. Refresh Ports and select the ESP serial port (usually something like `/dev/cu.usbmodem*` or `COM3`).

@@ -13,7 +13,7 @@ from flask import Flask, render_template_string, jsonify, request
 from flask_socketio import SocketIO
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 ser = None
 serial_thread = None
@@ -222,5 +222,12 @@ def send_command(cmd):
 
 if __name__ == '__main__':
     print("Avionics Ground Station")
-    print("Open http://localhost:5000 in your browser")
-    socketio.run(app, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
+    print("Open http://localhost:5001 in your browser")
+    try:
+        socketio.run(app, host='0.0.0.0', port=5001, allow_unsafe_werkzeug=True)
+    except OSError as e:
+        if e.errno == 48:
+            print("Port 5001 is also in use. Trying 5002...")
+            socketio.run(app, host='0.0.0.0', port=5002, allow_unsafe_werkzeug=True)
+        else:
+            raise
