@@ -193,35 +193,35 @@
 
 #include <Arduino.h>
 
-#define SERVO_PIN 2   // change to 3 to test the other pin
+#define SERVO_PIN 3   // try 2, then 3, then 4 if needed
 
 void setup() {
   Serial.begin(115200);
-  // Non-blocking wait so we never hang if USB isn't ready
   unsigned long start = millis();
-  while (!Serial && (millis() - start < 3000)) {
-    delay(10);
-  }
+  while (!Serial && (millis() - start < 3000)) delay(10);
   delay(500);
-  Serial.println("Servo sweep test starting");
+  Serial.println("Corrected servo test");
 
-  // Native LEDC – 50 Hz, 14-bit
-  ledcAttach(SERVO_PIN, 50, 14);
-  Serial.println("LEDC attached");
+  ledcAttach(SERVO_PIN, 50, 14);   // 50 Hz, 14-bit
+  Serial.println("Attached");
 }
 
 void loop() {
-  Serial.println("Sweeping...");
-  for (int us = 1000; us <= 2000; us += 20) {
-    uint32_t duty = (uint32_t)us * ((1 << 14) - 1) / 20000UL;
-    ledcWrite(SERVO_PIN, duty);
-    delay(30);
-  }
-  delay(800);
-  for (int us = 2000; us >= 1000; us -= 20) {
-    uint32_t duty = (uint32_t)us * ((1 << 14) - 1) / 20000UL;
-    ledcWrite(SERVO_PIN, duty);
-    delay(30);
-  }
-  delay(800);
+  // Center (1500 µs)
+  uint32_t duty = (1500UL * 16383UL) / 20000UL;
+  ledcWrite(SERVO_PIN, duty);
+  Serial.printf("Center  duty=%u\n", duty);
+  delay(2000);
+
+  // One end (~1000 µs)
+  duty = (1000UL * 16383UL) / 20000UL;
+  ledcWrite(SERVO_PIN, duty);
+  Serial.printf("Min     duty=%u\n", duty);
+  delay(2000);
+
+  // Other end (~2000 µs)
+  duty = (2000UL * 16383UL) / 20000UL;
+  ledcWrite(SERVO_PIN, duty);
+  Serial.printf("Max     duty=%u\n", duty);
+  delay(2000);
 }
