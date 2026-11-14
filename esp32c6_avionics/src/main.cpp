@@ -192,11 +192,11 @@ void loop() {
       rollCmd  = -rollCmd;
     }
 
-    // Map to servo angles
-    // Positive pitch → both outer edges up → both angles decrease below 90
+    // Map to servo angles (pitch and roll were swapped; corrected)
+    // Positive pitch → both outer edges up → both angles decrease below 90 (common mode)
     // Positive roll  → differential
-    float leftAngle  = servoNeutral - constrain(pitchCmd + rollCmd, -maxDeflection, maxDeflection);
-    float rightAngle = servoNeutral - constrain(pitchCmd - rollCmd, -maxDeflection, maxDeflection);
+    float leftAngle  = servoNeutral - constrain(rollCmd + pitchCmd, -maxDeflection, maxDeflection);
+    float rightAngle = servoNeutral - constrain(rollCmd - pitchCmd, -maxDeflection, maxDeflection);
 
     if (armed && !zeroing) {
       servoLeft.write(leftAngle);
