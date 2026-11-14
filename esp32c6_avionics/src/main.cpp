@@ -7,12 +7,12 @@
 // Pins
 #define SDA_PIN 0
 #define SCL_PIN 14
-#define SERVO1_PIN 2  // Pitch
-#define SERVO2_PIN 3  // Yaw
+#define SERVO_LEFT_PIN 2   // Left fin
+#define SERVO_RIGHT_PIN 3  // Right fin
 
 Adafruit_MPU6050 mpu;
-Servo servoPitch;
-Servo servoYaw;
+Servo servoLeft;
+Servo servoRight;
 
 // Attitude
 float pitch = 0.0, roll = 0.0, yaw = 0.0;
@@ -24,37 +24,51 @@ float Kp = 1.5, Ki = 0.05, Kd = 0.3;
 float pitchIntegral = 0, rollIntegral = 0, yawIntegral = 0;
 float lastPitchError = 0, lastRollError = 0, lastYawError = 0;
 
-// Zeroing & collection
+// States
+bool armed = false;
 bool zeroing = false;
 bool collecting = false;
+bool descentMode = false;   // false = Ascent, true = Descent
 float pitchOffset = 0, rollOffset = 0, yawOffset = 0;
 unsigned long zeroStart = 0;
 const unsigned long zeroDuration = 2000;
 
 // Servo
-float servoNeutral = 90.0;
-float maxDeflection = 30.0;
-bool sTurnEnabled = true;
-float sTurnAmplitude = 5.0;
-unsigned long sTurnPeriod = 2000;
-unsigned long sTurnStart = 0;
+const float servoNeutral = 90.0;
+const float maxDeflection = 30.0;
+const float yawMixGain = 0.5;   // equal weight into pitch and roll
 
 // Serial command buffer
 String serialCmd = "";
 
+void setServosNeutral() {
+  servoLeft.write(servoNeutral);
+  servoRight.write(servoNeutral);
+}
+
 void processCommand(String cmd) {
   cmd.trim();
-  if (cmd == "start") {
+  if (cmd == "arm") {
+    armed = true;
     collecting = true;
     zeroing = true;
     zeroStart = millis();
     pitchIntegral = rollIntegral = yawIntegral = 0;
     lastPitchError = lastRollError = lastYawError = 0;
-    Serial.println("{\"status\":\"started\",\"zeroing\":true}");
-  } else if (cmd == "stop") {
+    setServosNeutral();
+    Serial.println("{\"status\":\"armed\",\"zeroing\":true}");
+  } else if (cmd == "disarm" || cmd == "stop") {
+    armed = false;
     collecting = false;
     zeroing = false;
-    Serial.println("{\"status\":\"stopped\"}");
+    setServosNeutral();
+    Serial.println("{\"status\":\"disarmed\"}");
+  } else if (cmd == "ascent") {
+    descentMode = false;
+    Serial.println("{\"status\":\"mode\",\"mode\":\"ascent\"}");
+  } else if (cmd == "descent") {
+    descentMode = true;
+    Serial.println("{\"status\":\"mode\",\"mode\":\"descent\"}");
   } else if (cmd.startsWith("gains:")) {
     int c1 = cmd.indexOf(',');
     int c2 = cmd.indexOf(',', c1 + 1);
@@ -87,15 +101,13 @@ void setup() {
   ESP32PWM::allocateTimer(1);
   ESP32PWM::allocateTimer(2);
   ESP32PWM::allocateTimer(3);
-  servoPitch.setPeriodHertz(50);
-  servoYaw.setPeriodHertz(50);
-  servoPitch.attach(SERVO1_PIN, 500, 2400);
-  servoYaw.attach(SERVO2_PIN, 500, 2400);
-  servoPitch.write(servoNeutral);
-  servoYaw.write(servoNeutral);
+  servoLeft.setPeriodHertz(50);
+  servoRight.setPeriodHertz(50);
+  servoLeft.attach(SERVO_LEFT_PIN, 500, 2400);
+  servoRight.attach(SERVO_RIGHT_PIN, 500, 2400);
+  setServosNeutral();
 
   lastTime = micros();
-  sTurnStart = millis();
 }
 
 void loop() {
@@ -167,24 +179,40 @@ void loop() {
     lastYawError = yawError;
 
     float pitchOut = Kp * pitchError + Ki * pitchIntegral + Kd * pitchDeriv;
-    float yawOut = Kp * yawError + Ki * yawIntegral + Kd * yawDeriv;
+    float rollOut  = Kp * rollError  + Ki * rollIntegral  + Kd * rollDeriv;
+    float yawOut   = Kp * yawError   + Ki * yawIntegral   + Kd * yawDeriv;
 
-    float sTurn = 0;
-    if (sTurnEnabled) {
-      float phase = 2 * PI * (millis() - sTurnStart) / (float)sTurnPeriod;
-      sTurn = sTurnAmplitude * sin(phase);
+    // Mix yaw equally into pitch and roll
+    float pitchCmd = pitchOut + yawOut * yawMixGain;
+    float rollCmd  = rollOut  + yawOut * yawMixGain;
+
+    // Ascent/Descent mirror: Descent inverts both
+    if (descentMode) {
+      pitchCmd = -pitchCmd;
+      rollCmd  = -rollCmd;
     }
 
-    float pitchCmd = servoNeutral + constrain(pitchOut, -maxDeflection, maxDeflection);
-    float yawCmd = servoNeutral + constrain(yawOut + sTurn, -maxDeflection, maxDeflection);
-    servoPitch.write(pitchCmd);
-    servoYaw.write(yawCmd);
+    // Map to servo angles
+    // Positive pitch → both outer edges up → both angles decrease below 90
+    // Positive roll  → differential
+    float leftAngle  = servoNeutral - constrain(pitchCmd + rollCmd, -maxDeflection, maxDeflection);
+    float rightAngle = servoNeutral - constrain(pitchCmd - rollCmd, -maxDeflection, maxDeflection);
+
+    if (armed && !zeroing) {
+      servoLeft.write(leftAngle);
+      servoRight.write(rightAngle);
+    } else {
+      setServosNeutral();
+    }
 
     if (collecting) {
-      Serial.printf("{\"t\":%lu,\"p\":%.2f,\"y\":%.2f,\"r\":%.2f,\"ax\":%.3f,\"ay\":%.3f,\"az\":%.3f,\"pc\":%.1f,\"yc\":%.1f,\"st\":%.2f,\"zeroing\":%s}\n",
+      Serial.printf("{\"t\":%lu,\"p\":%.2f,\"y\":%.2f,\"r\":%.2f,\"ax\":%.3f,\"ay\":%.3f,\"az\":%.3f,\"lc\":%.1f,\"rc\":%.1f,\"zeroing\":%s,\"armed\":%s,\"descent\":%s}\n",
                     millis(), p, y, r,
                     a.acceleration.x / 9.81, a.acceleration.y / 9.81, a.acceleration.z / 9.81,
-                    pitchCmd, yawCmd, sTurn, zeroing ? "true" : "false");
+                    leftAngle, rightAngle,
+                    zeroing ? "true" : "false",
+                    armed ? "true" : "false",
+                    descentMode ? "true" : "false");
     }
   }
 

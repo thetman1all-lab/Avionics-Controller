@@ -60,8 +60,11 @@ HTML = r'''
   </div>
   <div class="panel">
     <div id="zeroMsg" class="zero">Keep the board still while it zeros out</div>
-    <button onclick="sendCmd('start')">Start Collection</button>
-    <button onclick="sendCmd('stop')">Stop Collection</button>
+    <button onclick="sendCmd('arm')">Arm</button>
+    <button onclick="sendCmd('disarm')">Disarm</button>
+    <button onclick="sendCmd('ascent')">Ascent Mode</button>
+    <button onclick="sendCmd('descent')">Descent Mode</button>
+    <button onclick="clearData()">Clear Data</button>
     <button onclick="downloadCSV()">Download CSV</button>
     <div>
       <label>Kp: <input type="range" id="kp" min="0" max="5" step="0.1" value="1.5" oninput="sendGains()"></label>
@@ -82,7 +85,7 @@ HTML = r'''
   <script>
     const socket = io();
     const maxPoints = 120;
-    let csvRows = ["Time(ms),Pitch(deg),Yaw(deg),Roll(deg),AccelX(g),AccelY(g),AccelZ(g),PitchCmd,YawCmd,STurn"];
+    let csvRows = ["Time(ms),Pitch(deg),Yaw(deg),Roll(deg),AccelX(g),AccelY(g),AccelZ(g),LeftCmd,RightCmd,Armed,Descent"];
 
     function makeChart(id, label, color) {
       const ctx = document.getElementById(id).getContext('2d');
@@ -131,7 +134,7 @@ HTML = r'''
       document.getElementById('ax').textContent = d.ax.toFixed(3);
       document.getElementById('ay').textContent = d.ay.toFixed(3);
       document.getElementById('az').textContent = d.az.toFixed(3);
-      csvRows.push([d.t, d.p.toFixed(2), d.y.toFixed(2), d.r.toFixed(2), d.ax.toFixed(3), d.ay.toFixed(3), d.az.toFixed(3), d.pc.toFixed(1), d.yc.toFixed(1), d.st.toFixed(2)].join(','));
+      csvRows.push([d.t, d.p.toFixed(2), d.y.toFixed(2), d.r.toFixed(2), d.ax.toFixed(3), d.ay.toFixed(3), d.az.toFixed(3), d.lc.toFixed(1), d.rc.toFixed(1), d.armed, d.descent].join(','));
     });
 
     function refreshPorts() { socket.emit('list_ports'); }
@@ -147,6 +150,19 @@ HTML = r'''
       const ki = document.getElementById('ki').value;
       const kd = document.getElementById('kd').value;
       socket.emit('command', `gains:${kp},${ki},${kd}`);
+    }
+    function clearData() {
+      pitchChart.data.labels = [];
+      pitchChart.data.datasets[0].data = [];
+      yawChart.data.labels = [];
+      yawChart.data.datasets[0].data = [];
+      rollChart.data.labels = [];
+      rollChart.data.datasets[0].data = [];
+      pitchChart.update();
+      yawChart.update();
+      rollChart.update();
+      csvRows = ["Time(ms),Pitch(deg),Yaw(deg),Roll(deg),AccelX(g),AccelY(g),AccelZ(g),LeftCmd,RightCmd,Armed,Descent"];
+      document.getElementById('status').textContent = 'Data cleared';
     }
     function downloadCSV() {
       const newline = String.fromCharCode(10);
